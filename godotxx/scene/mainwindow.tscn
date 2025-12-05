@@ -1,0 +1,44 @@
+[gd_scene load_steps=6 format=3 uid="uid://xl0a1mrj7pf8"]
+
+[ext_resource type="Script" uid="uid://bkbwlpkwis5w6" path="res://scene/mainwindow.gd" id="1_iekp3"]
+[ext_resource type="PackedScene" uid="uid://bwqp48xyqo1pk" path="res://scene/xx_00.tscn" id="2_iekp3"]
+[ext_resource type="PackedScene" uid="uid://bv16jjasyi7ug" path="res://scene/chat.tscn" id="3_kw3gx"]
+[ext_resource type="PackedScene" uid="uid://dvmmwr0bmil6t" path="res://scene/enterword.tscn" id="4_uofag"]
+[ext_resource type="PackedScene" uid="uid://de4b2s613h5je" path="res://scene/contextmenu.tscn" id="5_gxdgl"]
+
+[node name="mainwindow" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_iekp3")
+
+[node name="XX_0" parent="." instance=ExtResource("2_iekp3")]
+
+[node name="chat" parent="." instance=ExtResource("3_kw3gx")]
+layout_mode = 1
+offset_left = 9.0
+offset_top = 343.0
+offset_right = 338.0
+offset_bottom = 399.0
+scale = Vector2(1.3564132, 1.4249175)
+
+[node name="enter" parent="." instance=ExtResource("4_uofag")]
+visible = false
+layout_mode = 1
+offset_left = 8.0
+offset_top = 425.0
+offset_right = 208.0
+offset_bottom = 456.0
+scale = Vector2(1.8779278, 1.3670026)
+
+[node name="ContextMenu" parent="." instance=ExtResource("5_gxdgl")]
+
+[connection signal="chatmode" from="XX_0" to="." method="_on_xx_0_chatmode"]
+[connection signal="chatmode" from="XX_0" to="enter" method="_on_xx_0_chatmode"]
+[connection signal="open_chat_window" from="XX_0" to="." method="_on_open_chat_window"]
+[connection signal="reset" from="XX_0" to="." method="_on_xx_0_reset"]
+[connection signal="reset" from="XX_0" to="enter" method="_on_xx_0_reset"]

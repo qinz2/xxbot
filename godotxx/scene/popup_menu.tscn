@@ -1,0 +1,5 @@
+[gd_scene load_steps=0 format=3 uid="uid://2fnvm32wk7dl"]
+
+[node name="PopupMenu" type="PopupMenu"]
+oversampling_override = 1.0
+visible = true

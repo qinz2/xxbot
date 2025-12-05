@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3 uid="uid://dvmmwr0bmil6t"]
+
+[ext_resource type="Script" uid="uid://3jfex1yc4w6u" path="res://scene/enterword.gd" id="1_62jg8"]
+
+[node name="enter" type="LineEdit"]
+offset_top = 2.0
+offset_right = 103.57142
+offset_bottom = 33.0
+scale = Vector2(3.8445177, 1.27)
+keep_editing_on_text_submit = true
+script = ExtResource("1_62jg8")
