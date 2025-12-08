@@ -1,3 +1,14 @@
+import sys
+import os
+from typing import Optional, List, Dict, Any, Tuple, Union
+
+# 自动添加项目根目录到 Python 路径
+current_file_dir = os.path.dirname(os.path.abspath(__file__))
+# 计算相对项目根目录的层级（自动适配）
+relative_level = "../../../"
+project_root = os.path.abspath(os.path.join(current_file_dir, relative_level))
+sys.path.insert(0, project_root)
+
 from peewee import Model, DoubleField, IntegerField, BooleanField, TextField, FloatField, DateTimeField
 from .database import db
 import datetime
@@ -67,6 +78,15 @@ class ChatStreams(BaseModel):
     # user_cardname 可能为空字符串或不存在，设置 null=True 更具灵活性。
     user_cardname = TextField(null=True)
 
+    # 在类的最后添加平台验证方法
+    @classmethod
+    def validate_platform(cls, platform):
+        """验证平台类型"""
+        valid_platforms = ['qq', 'godot', 'telegram', 'discord']  # 添加 godot
+        if platform not in valid_platforms:
+            raise ValueError(f"不支持的平台类型: {platform}")
+        return True
+    
     class Meta:
         # 如果 BaseModel.Meta.database 已设置，则此模型将继承该数据库配置。
         # 如果不使用带有数据库实例的 BaseModel，或者想覆盖它，
@@ -272,11 +292,16 @@ class PersonInfo(BaseModel):
     know_times = FloatField(null=True)  # 认识时间 (时间戳)
     know_since = FloatField(null=True)  # 首次印象总结时间
     last_know = FloatField(null=True)  # 最后一次印象总结时间
+    platform = TextField(index=True) #添加验证
+    name = TextField(null=True)
 
     class Meta:
         # database = db # 继承自 BaseModel
         table_name = "person_info"
-
+        # 添加联合索引，优化查询性能
+        indexes = (
+            (('platform', 'user_id'), True),  # 这是新增的索引
+        )
 
 class GroupInfo(BaseModel):
     """
@@ -743,3 +768,98 @@ def fix_image_id():
 # 模块加载时调用初始化函数
 initialize_database(sync_constraints=True)
 fix_image_id()
+
+class MemoryVersion(BaseModel):
+    """记忆版本控制表"""
+    memory_id = TextField(index=True)  # 记忆的唯一标识
+    person_id = TextField(index=True)  # 关联的用户
+    version = IntegerField()           # 版本号
+    content = TextField()              # 记忆内容
+    create_time = DoubleField()        # 创建时间
+    is_active = BooleanField(default=True)  # 是否激活
+    change_reason = TextField(null=True)    # 修改原因
+    
+    class Meta:
+        table_name = "memory_versions"
+        indexes = (
+            (('memory_id', 'version'), True),  # 唯一索引
+        )
+
+# 在数据库初始化时创建此表
+def init_database():
+    """初始化数据库，创建所有表"""
+    db.connect(reuse_if_open=True)
+    db.create_tables([
+        ChatStreams, 
+        Messages, 
+        PersonInfo,
+        MemoryVersion  # 添加新表
+    ])
+    print("✓ 数据库表创建完成")
+
+class MemoryVersionManager:
+    """记忆版本管理器"""
+    
+    @staticmethod
+    def save_version(person_id: str, content: str, reason: str = None) -> MemoryVersion:
+        """保存新版本"""
+        # 获取最新版本号
+        try:
+            latest = (MemoryVersion
+                     .select()
+                     .where(MemoryVersion.person_id == person_id)
+                     .order_by(MemoryVersion.version.desc())
+                     .first())
+            next_version = latest.version + 1 if latest else 1
+        except:
+            next_version = 1
+        
+        # 创建新版本
+        memory_id = f"{person_id}_memory"
+        version = MemoryVersion.create(
+            memory_id=memory_id,
+            person_id=person_id,
+            version=next_version,
+            content=content,
+            create_time=time.time(),
+            is_active=True,
+            change_reason=reason
+        )
+        
+        return version
+    
+    @staticmethod
+    def get_active_version(person_id: str) -> Optional[MemoryVersion]:
+        """获取当前激活的版本"""
+        try:
+            return (MemoryVersion
+                   .select()
+                   .where(
+                       (MemoryVersion.person_id == person_id) &
+                       (MemoryVersion.is_active == True)
+                   )
+                   .order_by(MemoryVersion.version.desc())
+                   .first())
+        except:
+            return None
+    
+    @staticmethod
+    def rollback_version(person_id: str, target_version: int) -> bool:
+        """回滚到指定版本"""
+        try:
+            # 停用所有更新的版本
+            MemoryVersion.update(is_active=False).where(
+                (MemoryVersion.person_id == person_id) &
+                (MemoryVersion.version > target_version)
+            ).execute()
+            
+            # 激活目标版本
+            MemoryVersion.update(is_active=True).where(
+                (MemoryVersion.person_id == person_id) &
+                (MemoryVersion.version == target_version)
+            ).execute()
+            
+            return True
+        except Exception as e:
+            print(f"回滚失败: {e}")
+            return False

@@ -1,6 +1,16 @@
+import sys
+import os
+
+# 自动添加项目根目录到 Python 路径
+current_file_dir = os.path.dirname(os.path.abspath(__file__))
+# 计算相对项目根目录的层级（自动适配）
+relative_level = "../"
+project_root = os.path.abspath(os.path.join(current_file_dir, relative_level))
+sys.path.insert(0, project_root)
+
 import asyncio
 import time
-from maim_message import MessageServer, Router, RouteConfig, TargetConfig  # ✅ 新增 Router 导入
+from maim_message import MessageServer, Router, RouteConfig, TargetConfig
 
 from src.common.remote import TelemetryHeartBeatTask
 from src.manager.async_task_manager import async_task_manager
@@ -24,8 +34,8 @@ from src.plugin_system.core.plugin_manager import plugin_manager
 # 导入消息API和traceback模块
 from src.common.message import get_global_api
 
-# 导入 Godot 适配器
-from src.adapters.godot_adapter import godot_adapter  # 新增
+# 导入 Godot 适配器 V2（模仿 Napcat 的做法）
+from src.adapters.godot_adapter_v2 import godot_adapter
 
 # 插件系统现在使用统一的插件加载器
 
@@ -40,14 +50,45 @@ class MainSystem:
         self.app: MessageServer = get_global_api()
         self.server: Server = get_global_server()
 
-        # ✅ 新增：设置 Godot 路由
-        self._setup_router()
+        # 设置 Godot Router
+        self._setup_godot_router()
 
         # 注册 WebUI API 路由
         self._register_webui_routes()
 
         # 设置 WebUI（开发/生产模式）
         self._setup_webui()
+    
+    def _setup_godot_router(self):
+        """设置 Godot 平台的 Router"""
+        route_config = RouteConfig(
+            route_config={
+                "godot": TargetConfig(
+                    url="ws://127.0.0.1:8765/ws",
+                    token=None,
+                )
+            }
+        )
+        self.router = Router(route_config)
+        
+        # 注册接收处理器（接收来自 Godot 的消息）
+        self.router.register_class_handler(godot_adapter)
+        
+        # 将 Router 设置为全局变量，供发送时使用
+        import src.adapters.godot_send_handler as godot_send_module
+        godot_send_module.set_router(self.router)
+        
+        # Monkey patch uni_message_sender 来使用 Router 发送 Godot 消息
+        import src.chat.message_receive.uni_message_sender as uni_sender_module
+        uni_sender_module._send_message = self._patched_send_message
+        
+        logger.info("Godot 平台 Router 已配置并注册")
+        logger.info("Godot Router 已设置为全局发送器")
+    
+    async def _patched_send_message(self, message, show_log=True) -> bool:
+        """Patched 发送函数，Godot 平台使用 Router"""
+        from src.adapters.godot_send_handler import send_to_godot
+        return await send_to_godot(message)
 
     def _register_webui_routes(self):
         """注册 WebUI API 路由"""
@@ -74,22 +115,7 @@ class MainSystem:
         except Exception as e:
             logger.error(f"设置 WebUI 失败: {e}")
 
-    # ✅ 新增：路由设置方法
-    def _setup_router(self):
-        """设置 Godot 平台消息路由"""
-        route_config = RouteConfig(
-            route_config={
-                "godot": TargetConfig(
-                    url="ws://127.0.0.1:8765/ws",  # Godot WebSocket 地址
-                    token=None,
-                )
-            }
-        )
-        self.router = Router(route_config)
 
-        # 注册 Godot 平台处理器
-        self.router.register_class_handler(godot_adapter)
-        logger.info("Godot 平台路由已注册")
 
     async def initialize(self):
         """初始化系统组件"""
@@ -187,7 +213,7 @@ class MainSystem:
                 get_emoji_manager().start_periodic_check_register(),
                 self.app.run(),
                 self.server.run(),
-                self.router.run(),  # ✅ 新增：运行 Router
+                self.router.run(),  # 运行 Godot Router
             ]
 
             await asyncio.gather(*tasks)

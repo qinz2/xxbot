@@ -1,3 +1,13 @@
+import sys
+import os
+
+# 自动添加项目根目录到 Python 路径
+current_file_dir = os.path.dirname(os.path.abspath(__file__))
+# 计算相对项目根目录的层级（自动适配）
+relative_level = "../../"
+project_root = os.path.abspath(os.path.join(current_file_dir, relative_level))
+sys.path.insert(0, project_root)
+
 import hashlib
 import asyncio
 import json
@@ -23,13 +33,32 @@ relation_selection_model = LLMRequest(
 )
 
 
-def get_person_id(platform: str, user_id: Union[int, str]) -> str:
-    """获取唯一id"""
-    if "-" in platform:
-        platform = platform.split("-")[1]
-    components = [platform, str(user_id)]
-    key = "_".join(components)
-    return hashlib.md5(key.encode()).hexdigest()
+def get_person_id(platform: str, user_id: str, group_id: str = None) -> str:
+    """
+    生成统一的人物ID
+    Args:
+        platform: 平台名称 (qq/godot/telegram等)
+        user_id: 用户ID
+        group_id: 群组ID（可选）
+    Returns:
+        统一格式的person_id
+    """
+    # 验证平台
+    valid_platforms = ['qq', 'godot', 'telegram', 'discord']
+    if platform not in valid_platforms:
+        raise ValueError(f"不支持的平台: {platform}")
+    
+    # Godot 平台特殊处理
+    if platform == 'godot':
+        # Godot 使用设备唯一标识作为 user_id
+        # 格式: godot_设备ID
+        return f"godot_{user_id}"
+    
+    # 原有逻辑
+    if group_id:
+        return f"{platform}_{group_id}_{user_id}"
+    else:
+        return f"{platform}_{user_id}"
 
 
 def get_person_id_by_person_name(person_name: str) -> str:
@@ -160,68 +189,106 @@ def levenshtein_distance(s1: str, s2: str) -> int:
 
 
 class Person:
-    @classmethod
-    def register_person(
-        cls, platform: str, user_id: str, nickname: str, group_id: Optional[str] = None, group_nick_name: Optional[str] = None
-    ):
+    # 新添加的方法
+    def add_memory_point(self, content: str, category: str = "general", 
+                    weight: float = 1.0) -> None:
         """
-        注册新用户的类方法
-        必须输入 platform、user_id 和 nickname 参数
+        添加记忆点
+        Args:
+            content: 记忆内容
+            category: 记忆分类 (general/preference/important/event)
+            weight: 权重 (0.0-1.0)
+        """
+        import json
+        
+        # Godot 平台的记忆分类权重
+        if self.person_info.platform == 'godot':
+            category_weights = {
+                'preference': 1.0,    # 用户偏好最重要
+                'important': 0.9,     # 重要事件
+                'event': 0.7,         # 一般事件
+                'general': 0.5        # 日常对话
+            }
+            weight = category_weights.get(category, 0.5)
+        
+        # 获取现有记忆点
+        try:
+            memory_points = json.loads(self.person_info.memory_points or "[]")
+        except:
+            memory_points = []
+        
+        # 添加新记忆点
+        new_point = {
+            'content': content,
+            'category': category,
+            'weight': weight,
+            'timestamp': time.time()
+        }
+        memory_points.append(new_point)
+        
+        # 限制记忆点数量（保留最近100个）
+        if len(memory_points) > 100:
+            # 按权重和时间排序，保留重要的
+            memory_points.sort(key=lambda x: (x['weight'], x['timestamp']), reverse=True)
+            memory_points = memory_points[:100]
+        
+        # 保存
+        self.person_info.memory_points = json.dumps(memory_points, ensure_ascii=False)
+        self.person_info.save()
 
+    @classmethod
+    def register_person(cls, platform: str, user_id: str, name: str = None, 
+                   group_id: str = None, **kwargs) -> 'Person':
+        """
+        注册新用户或获取现有用户
         Args:
             platform: 平台名称
             user_id: 用户ID
-            nickname: 用户昵称
-            group_id: 群号（可选，仅在群聊时提供）
-            group_nick_name: 群昵称（可选，仅在群聊时提供）
-
-        Returns:
-            Person: 新注册的Person实例
+           name: 用户昵称
+            group_id: 群组ID
+          **kwargs: 其他平台特定信息
         """
-        if not platform or not user_id or not nickname:
-            logger.error("注册用户失败：platform、user_id 和 nickname 都是必需参数")
-            return None
-
-        # 生成唯一的person_id
-        person_id = get_person_id(platform, user_id)
-
-        if is_person_known(person_id=person_id):
-            logger.debug(f"用户 {nickname} 已存在")
-            person = Person(person_id=person_id)
-            # 如果是群聊，更新群昵称
-            if group_id and group_nick_name:
-                person.add_group_nick_name(group_id, group_nick_name)
-            return person
-
-        # 创建Person实例
-        person = cls.__new__(cls)
-
-        # 设置基本属性
-        person.person_id = person_id
-        person.platform = platform
-        person.user_id = user_id
-        person.nickname = nickname
-
-        # 初始化默认值
-        person.is_known = True  # 注册后立即标记为已认识
-        person.person_name = nickname  # 使用nickname作为初始person_name
-        person.name_reason = "用户注册时设置的昵称"
-        person.know_times = 1
-        person.know_since = time.time()
-        person.last_know = time.time()
-        person.memory_points = []
-        person.group_nick_name = []  # 初始化群昵称列表
-
-        # 如果是群聊，添加群昵称
-        if group_id and group_nick_name:
-            person.add_group_nick_name(group_id, group_nick_name)
-
-        # 同步到数据库
-        person.sync_to_database()
-
-        logger.info(f"成功注册新用户：{person_id}，平台：{platform}，昵称：{nickname}")
-
-        return person
+        person_id = get_person_id(platform, user_id, group_id)
+    
+        # 尝试从数据库获取
+        try:
+            person_info = PersonInfo.get(
+                (PersonInfo.platform == platform) & 
+                (PersonInfo.user_id == user_id)
+         )
+            print(f"✓ 找到现有用户: {person_id}")
+        
+        except PersonInfo.DoesNotExist:
+            # 创建新用户
+            print(f"🆕 注册新用户: {person_id}")
+        
+            # Godot 平台特殊初始化
+            if platform == 'godot':
+                default_name = kwargs.get('device_name', f'Godot用户_{user_id[:8]}')
+                person_info = PersonInfo.create(
+                    user_id=user_id,
+                    platform=platform,
+                    name=name or default_name,
+                    nick_name=name or default_name,
+                    person_info="",  # 将逐步积累
+                    memory_points="[]",  # 空记忆点列表
+                    last_interaction=time.time(),
+                    create_time=time.time()
+                )
+            else:
+                # 原有平台逻辑
+                person_info = PersonInfo.create(
+                    user_id=user_id,
+                    platform=platform,
+                    name=name or f"用户_{user_id}",
+                    nick_name=name,
+                    person_info="",
+                    memory_points="[]",
+                    last_interaction=time.time(),
+                    create_time=time.time()
+                )
+    
+        return cls(person_info)
 
     def __init__(self, platform: str = "", user_id: str = "", person_id: str = "", person_name: str = ""):
         if platform == global_config.bot.platform and user_id == global_config.bot.qq_account:

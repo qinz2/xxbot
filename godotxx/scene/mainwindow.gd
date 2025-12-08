@@ -10,9 +10,7 @@ var chat_window: Control = null
 func _ready() -> void:
 	get_tree().root.set_transparent_background(true)
 	
-	# 使用XxClient（单例名）
-	XxClient.message_received.connect(_on_mai_response)
-	XxClient.connection_changed.connect(_on_connection_changed)
+	# 信号连接已移到 chat_window.gd，避免重复连接
 	
 	if enter.has_signal("text_submitted"):
 		enter.text_submitted.connect(_on_enterword_submitted)
