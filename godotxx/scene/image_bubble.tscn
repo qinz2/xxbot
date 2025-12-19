@@ -1,0 +1,20 @@
+[gd_scene load_steps=2 format=3 uid="uid://chywvpjk6plmt"]
+
+[ext_resource type="Script" uid="uid://b2dkbsb71pun4" path="res://scene/image_bubble.gd" id="1_uiw8p"]
+
+[node name="ImageBubble" type="Panel"]
+custom_minimum_size = Vector2(500, 300)
+script = ExtResource("1_uiw8p")
+
+[node name="ImageDisplay" type="TextureRect" parent="."]
+custom_minimum_size = Vector2(400, 300)
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -200.0
+offset_right = 200.0
+offset_bottom = 300.0
+grow_horizontal = 2
+expand_mode = 1
+stretch_mode = 5

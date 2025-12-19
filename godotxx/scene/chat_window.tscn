@@ -1,6 +1,10 @@
-[gd_scene load_steps=3 format=3 uid="uid://cabybg7d5xuqk"]
+[gd_scene load_steps=4 format=3 uid="uid://cabybg7d5xuqk"]
 
 [ext_resource type="Script" uid="uid://dcf4rmjan5gul" path="res://scene/chat_window.gd" id="1_qgdas"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qgdas"]
+bg_color = Color(0.8862745, 0.8784314, 0.5529412, 1)
+border_color = Color(0.0076186024, 0.0076186024, 0.0076186024, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_11pts"]
 bg_color = Color(1.2875572, 1.2875572, 1.2875572, 1)
@@ -15,6 +19,13 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_qgdas")
 
+[node name="DragHandle" type="Panel" parent="."]
+z_index = 1
+layout_mode = 1
+offset_right = 570.0
+offset_bottom = 30.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_qgdas")
+
 [node name="Background" type="Panel" parent="."]
 layout_mode = 1
 anchors_preset = 15
@@ -22,12 +33,14 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_11pts")
 
 [node name="MessagesScroll" type="ScrollContainer" parent="."]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
+offset_top = 30.0
 offset_bottom = 820.0
 grow_horizontal = 2
 
@@ -35,6 +48,21 @@ grow_horizontal = 2
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+
+[node name="StatusLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -100.0
+offset_bottom = -80.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="InputArea" type="HBoxContainer" parent="."]
 layout_mode = 1
@@ -50,6 +78,17 @@ grow_vertical = 0
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="ScreenshotButton" type="Button" parent="InputArea"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+tooltip_text = "截取屏幕"
+text = "📷"
+
+[node name="ImageButton" type="Button" parent="InputArea"]
+custom_minimum_size = Vector2(30, 0)
+layout_mode = 2
+text = "图片"
+
 [node name="SendButton" type="Button" parent="InputArea"]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
@@ -63,3 +102,10 @@ offset_right = 600.0
 offset_bottom = 31.0
 theme_override_colors/font_color = Color(0.972549, 0, 0, 1)
 text = "X"
+
+[node name="ImageFileDialog" type="FileDialog" parent="."]
+title = "Open a File"
+size = Vector2i(600, 350)
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.png", " *.jpg", "*.jpeg", "*.gif")

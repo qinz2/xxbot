@@ -37,8 +37,11 @@ scale = Vector2(1.8779278, 1.3670026)
 
 [node name="ContextMenu" parent="." instance=ExtResource("5_gxdgl")]
 
+
+
 [connection signal="chatmode" from="XX_0" to="." method="_on_xx_0_chatmode"]
 [connection signal="chatmode" from="XX_0" to="enter" method="_on_xx_0_chatmode"]
 [connection signal="open_chat_window" from="XX_0" to="." method="_on_open_chat_window"]
 [connection signal="reset" from="XX_0" to="." method="_on_xx_0_reset"]
 [connection signal="reset" from="XX_0" to="enter" method="_on_xx_0_reset"]
+

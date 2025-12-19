@@ -1,2 +1,33 @@
-# Normalize EOL for all files that Git considers text files.
-* text=auto eol=lf
+# Godot 项目文件
+*.gd linguist-language=GDScript
+*.tscn linguist-language=GDScript
+*.tres linguist-language=GDScript
+
+# 图片文件
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.bmp binary
+*.webp binary
+*.svg text
+
+# 音频文件
+*.wav binary
+*.ogg binary
+*.mp3 binary
+
+# 字体文件
+*.ttf binary
+*.otf binary
+
+# 导出文件
+*.import text
+*.cfg text
+
+# 行尾规范化
+* text=auto
+*.gd text eol=lf
+*.tscn text eol=lf
+*.tres text eol=lf
+*.cfg text eol=lf
+*.md text eol=lf

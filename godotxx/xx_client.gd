@@ -4,9 +4,15 @@ extends Node
 const WS_PORT = 8765
 const WS_PATH = "/ws"
 
+# 图片配置常量
+const MAX_IMAGE_SIZE_MB: int = 5  # 降低到 5MB
+const MAX_IMAGE_DIMENSION: int = 1024  # 降低到 1024（WebSocket 缓冲区限制）
+const SUPPORTED_IMAGE_FORMATS: Array[String] = ["png", "jpg", "jpeg", "bmp", "webp"]
+const JPEG_QUALITY: float = 0.8  # JPEG 压缩质量（0.0-1.0）
+
 var tcp_server: TCPServer = null
 var peers: Array[WebSocketPeer] = []
-var message_counter = 0
+var message_counter: int = 0
 
 enum {
 	DISCONNECTED,
@@ -53,7 +59,7 @@ func start_server():
 
 func send_message(player_id: String, content: String) -> bool:
 	"""发送文本消息到所有连接的客户端（Router）"""
-	var payload = _construct_message_payload(player_id, content)
+	var payload: Dictionary = _construct_message_payload(player_id, content)
 	
 	if not _validate_message_structure(payload):
 		push_error("❌ 消息结构验证失败")
@@ -63,14 +69,14 @@ func send_message(player_id: String, content: String) -> bool:
 		push_warning("⚠️ 没有连接的客户端")
 		return false
 	
-	var json_str = JSON.stringify(payload)
+	var json_str: String = JSON.stringify(payload)
 	print("📤 发送到xxBot: %s" % content)
 	print("📋 消息结构: %s" % json_str)
 	
-	var success = false
+	var success: bool = false
 	for peer in peers:
 		if peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
-			var error = peer.send_text(json_str)
+			var error: int = peer.send_text(json_str)
 			if error == OK:
 				success = true
 			else:
@@ -78,9 +84,232 @@ func send_message(player_id: String, content: String) -> bool:
 	
 	return success
 
+
+func send_image_with_text(player_id: String, image_path: String, text_message: String = "") -> bool:
+	"""发送图文混合消息到所有连接的客户端（Router）
+	
+	Args:
+		player_id: 玩家ID
+		image_path: 图片文件路径
+		text_message: 可选的文字说明
+	
+	Returns:
+		bool: 发送是否成功
+	"""
+	# 1. 验证文件存在
+	if not FileAccess.file_exists(image_path):
+		push_error("❌ 图片文件不存在: %s" % image_path)
+		return false
+	
+	# 2. 验证文件格式
+	var file_extension: String = image_path.get_extension().to_lower()
+	if not file_extension in SUPPORTED_IMAGE_FORMATS:
+		push_error("❌ 不支持的图片格式: %s（支持: %s）" % [file_extension, ", ".join(SUPPORTED_IMAGE_FORMATS)])
+		return false
+	
+	# 3. 加载图片
+	var image: Image = Image.load_from_file(image_path)
+	if image == null:
+		push_error("❌ 无法加载图片（格式不支持或文件损坏）: %s" % image_path)
+		return false
+	
+	print("📷 图片加载成功: %dx%d" % [image.get_width(), image.get_height()])
+	
+	# 4. 压缩图片（如果需要）
+	image = _compress_image_if_needed(image)
+	
+	# 5. 转换为 JPEG buffer
+	var jpeg_buffer: PackedByteArray = image.save_jpg_to_buffer(JPEG_QUALITY)
+	if jpeg_buffer.size() == 0:
+		push_error("❌ 图片编码失败")
+		return false
+	
+	# 6. 检查文件大小
+	var size_mb: float = jpeg_buffer.size() / 1024.0 / 1024.0
+	if size_mb > MAX_IMAGE_SIZE_MB:
+		push_error("❌ 图片文件过大: %.2f MB（最大: %d MB）" % [size_mb, MAX_IMAGE_SIZE_MB])
+		return false
+	
+	print("📦 图片编码成功: %.2f MB" % size_mb)
+	
+	# 7. 转换为 base64
+	var base64_string: String = Marshalls.raw_to_base64(jpeg_buffer)
+	var base64_size_mb: float = base64_string.length() / 1024.0 / 1024.0
+	print("🔐 base64 编码完成: %.2f MB (%d 字符)" % [base64_size_mb, base64_string.length()])
+	
+	# 8. 检查 base64 大小
+	if base64_size_mb > 3.0:
+		push_error("❌ 编码后数据过大: %.2f MB（建议 < 3 MB）" % base64_size_mb)
+		return false
+	
+	# 9. 构建图文混合消息 payload
+	var payload: Dictionary = _construct_mixed_payload(player_id, base64_string, text_message)
+	
+	# 10. 验证消息结构
+	if not _validate_message_structure(payload):
+		push_error("❌ 消息结构验证失败")
+		return false
+	
+	# 11. 检查连接
+	if peers.is_empty():
+		push_warning("⚠️ 没有连接的客户端")
+		return false
+	
+	# 12. 发送
+	var json_str: String = JSON.stringify(payload)
+	var json_size_mb: float = json_str.length() / 1024.0 / 1024.0
+	print("📤 发送图文消息到 xxBot (消息大小: %.2f MB)..." % json_size_mb)
+	
+	var success: bool = false
+	for peer in peers:
+		if peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
+			peer.set_outbound_buffer_size(32 * 1024 * 1024)
+			
+			var error: int = peer.send_text(json_str)
+			if error == OK:
+				success = true
+				print("✅ 图文消息发送成功")
+			elif error == ERR_OUT_OF_MEMORY:
+				push_error("❌ 发送失败: 数据过大")
+			else:
+				push_error("❌ 发送失败: 错误码 %d" % error)
+	
+	return success
+
+
+func send_image(player_id: String, image_path: String) -> bool:
+	"""发送图片消息到所有连接的客户端（Router）
+	
+	Args:
+		player_id: 玩家ID
+		image_path: 图片文件路径（支持绝对路径和 res:// 路径）
+	
+	Returns:
+		bool: 发送是否成功
+	"""
+	# 1. 验证文件存在
+	if not FileAccess.file_exists(image_path):
+		push_error("❌ 图片文件不存在: %s" % image_path)
+		return false
+	
+	# 2. 验证文件格式
+	var file_extension: String = image_path.get_extension().to_lower()
+	if not file_extension in SUPPORTED_IMAGE_FORMATS:
+		push_error("❌ 不支持的图片格式: %s（支持: %s）" % [file_extension, ", ".join(SUPPORTED_IMAGE_FORMATS)])
+		return false
+	
+	# 3. 加载图片
+	var image: Image = Image.load_from_file(image_path)
+	if image == null:
+		push_error("❌ 无法加载图片（格式不支持或文件损坏）: %s" % image_path)
+		return false
+	
+	print("📷 图片加载成功: %dx%d" % [image.get_width(), image.get_height()])
+	
+	# 4. 压缩图片（如果需要）
+	image = _compress_image_if_needed(image)
+	
+	# 5. 转换为 JPEG buffer（比 PNG 小很多）
+	var jpeg_buffer: PackedByteArray = image.save_jpg_to_buffer(JPEG_QUALITY)
+	if jpeg_buffer.size() == 0:
+		push_error("❌ 图片编码失败")
+		return false
+	
+	# 6. 检查文件大小
+	var size_mb: float = jpeg_buffer.size() / 1024.0 / 1024.0
+	if size_mb > MAX_IMAGE_SIZE_MB:
+		push_error("❌ 图片文件过大: %.2f MB（最大: %d MB）" % [size_mb, MAX_IMAGE_SIZE_MB])
+		return false
+	
+	print("📦 图片编码成功: %.2f MB" % size_mb)
+	
+	# 7. 转换为 base64
+	var base64_string: String = Marshalls.raw_to_base64(jpeg_buffer)
+	var base64_size_mb: float = base64_string.length() / 1024.0 / 1024.0
+	print("🔐 base64 编码完成: %.2f MB (%d 字符)" % [base64_size_mb, base64_string.length()])
+	
+	# 8. 检查 base64 大小（WebSocket 缓冲区限制）
+	# Godot WebSocket 默认缓冲区约 16MB，留一些余量
+	if base64_size_mb > 3.0:
+		push_error("❌ 编码后数据过大: %.2f MB（建议 < 3 MB）" % base64_size_mb)
+		push_error("💡 提示: 请选择更小的图片或降低图片质量")
+		return false
+	
+	# 9. 构建图片消息 payload
+	var payload: Dictionary = _construct_image_payload(player_id, base64_string)
+	
+	# 10. 验证消息结构
+	if not _validate_message_structure(payload):
+		push_error("❌ 消息结构验证失败")
+		return false
+	
+	# 11. 检查连接
+	if peers.is_empty():
+		push_warning("⚠️ 没有连接的客户端")
+		return false
+	
+	# 12. 发送
+	var json_str: String = JSON.stringify(payload)
+	var json_size_mb: float = json_str.length() / 1024.0 / 1024.0
+	print("📤 发送图片到 xxBot (消息大小: %.2f MB)..." % json_size_mb)
+	
+	var success: bool = false
+	for peer in peers:
+		if peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
+			# 设置较大的发送缓冲区
+			peer.set_outbound_buffer_size(32 * 1024 * 1024)  # 32MB
+			
+			var error: int = peer.send_text(json_str)
+			if error == OK:
+				success = true
+				print("✅ 图片发送成功")
+			elif error == ERR_OUT_OF_MEMORY:
+				push_error("❌ 发送失败: 数据过大，超出 WebSocket 缓冲区")
+				push_error("💡 提示: 请选择更小的图片（建议 < 1MB）")
+			else:
+				push_error("❌ 发送失败: 错误码 %d" % error)
+	
+	return success
+
+
+func _compress_image_if_needed(image: Image) -> Image:
+	"""如果图片过大，自动压缩
+	
+	Args:
+		image: 原始图片
+	
+	Returns:
+		Image: 压缩后的图片（如果需要）或原图片
+	"""
+	var width: int = image.get_width()
+	var height: int = image.get_height()
+	
+	if width <= MAX_IMAGE_DIMENSION and height <= MAX_IMAGE_DIMENSION:
+		return image
+	
+	# 计算缩放比例
+	var scale: float = MAX_IMAGE_DIMENSION / float(max(width, height))
+	var new_width: int = int(width * scale)
+	var new_height: int = int(height * scale)
+	
+	print("📐 压缩图片: %dx%d → %dx%d" % [width, height, new_width, new_height])
+	
+	# 调整图片大小（Godot 4.x 使用 resize 方法）
+	image.resize(new_width, new_height, Image.INTERPOLATE_LANCZOS)
+	
+	return image
+
 func _construct_message_payload(player_id: String, content: String) -> Dictionary:
-	"""构造标准的消息payload"""
-	var message_id = "godot_" + str(Time.get_unix_time_from_system()) + "_" + str(message_counter)
+	"""构造标准的文本消息 payload
+	
+	Args:
+		player_id: 玩家ID
+		content: 文本内容
+	
+	Returns:
+		Dictionary: 消息 payload
+	"""
+	var message_id: String = "godot_txt_%d_%d" % [Time.get_unix_time_from_system(), message_counter]
 	message_counter += 1
 	
 	return {
@@ -97,7 +326,7 @@ func _construct_message_payload(player_id: String, content: String) -> Dictionar
 			"group_info": null,
 			"format_info": {
 				"content_format": ["text"],
-				"accept_format": ["text"]
+				"accept_format": ["text", "image"]
 			},
 			"template_info": null,
 			"additional_config": null
@@ -110,6 +339,103 @@ func _construct_message_payload(player_id: String, content: String) -> Dictionar
 					"data": content
 				}
 			]
+		},
+		"raw_message": null
+	}
+
+
+func _construct_mixed_payload(player_id: String, base64_data: String, text_message: String = "") -> Dictionary:
+	"""构造图文混合消息 payload
+	
+	Args:
+		player_id: 玩家ID
+		base64_data: base64 编码的图片数据
+		text_message: 可选的文字说明
+	
+	Returns:
+		Dictionary: 消息 payload
+	"""
+	var message_id: String = "godot_mixed_%d_%d" % [Time.get_unix_time_from_system(), message_counter]
+	message_counter += 1
+	
+	# 构建消息段列表
+	var segments: Array = []
+	
+	# 如果有文字，先添加文字段
+	if not text_message.is_empty():
+		segments.append({
+			"type": "text",
+			"data": text_message
+		})
+	
+	# 添加图片段
+	segments.append({
+		"type": "image",
+		"data": base64_data
+	})
+	
+	return {
+		"message_info": {
+			"platform": "godot",
+			"message_id": message_id,
+			"time": Time.get_unix_time_from_system(),
+			"user_info": {
+				"platform": "godot",
+				"user_id": player_id,
+				"user_nickname": "Player_" + player_id,
+				"user_cardname": null
+			},
+			"group_info": null,
+			"format_info": {
+				"content_format": ["text", "image"] if not text_message.is_empty() else ["image"],
+				"accept_format": ["text", "image"]
+			},
+			"template_info": null,
+			"additional_config": null
+		},
+		"message_segment": {
+			"type": "seglist",
+			"data": segments
+		},
+		"raw_message": null
+	}
+
+
+func _construct_image_payload(player_id: String, base64_data: String) -> Dictionary:
+	"""构造图片消息 payload
+	
+	Args:
+		player_id: 玩家ID
+		base64_data: base64 编码的图片数据
+	
+	Returns:
+		Dictionary: 消息 payload
+	"""
+	var message_id: String = "godot_img_%d_%d" % [Time.get_unix_time_from_system(), message_counter]
+	message_counter += 1
+	
+	return {
+		"message_info": {
+			"platform": "godot",
+			"message_id": message_id,
+			"time": Time.get_unix_time_from_system(),
+			"user_info": {
+				"platform": "godot",
+				"user_id": player_id,
+				"user_nickname": "Player_" + player_id,
+				"user_cardname": null
+			},
+			"group_info": null,
+			"format_info": {
+				"content_format": ["image"],
+				"accept_format": ["text", "image"]
+			},
+			"template_info": null,
+			"additional_config": null
+		},
+		"message_segment": {
+			"type": "image",
+			"data": base64_data
 		},
 		"raw_message": null
 	}

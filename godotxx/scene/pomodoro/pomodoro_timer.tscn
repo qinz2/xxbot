@@ -1,0 +1,299 @@
+[gd_scene load_steps=2 format=3 uid="uid://dlioc3rrjt0gn"]
+
+[sub_resource type="GDScript" id="GDScript_d0ss3"]
+script/source = "class_name PomodoroUI
+extends Control
+
+# UI组件引用
+@onready var progress_circle: ProgressBar = $MainContainer/ProgressContainer/ProgressCircle
+@onready var time_label: Label = $MainContainer/ProgressContainer/TimeLabel
+@onready var status_label: Label = $MainContainer/StatusLabel
+@onready var start_button: Button = $MainContainer/ButtonContainer/StartButton
+@onready var pause_button: Button = $MainContainer/ButtonContainer/PauseButton
+@onready var stop_button: Button = $MainContainer/ButtonContainer/StopButton
+@onready var session_counter: Label = $MainContainer/SessionInfo/SessionCounter
+@onready var settings_button: Button = $MainContainer/BottomButtons/SettingsButton
+@onready var alarm_button: Button = $MainContainer/BottomButtons/AlarmButton
+@onready var close_button: Button = $MainContainer/BottomButtons/CloseButton
+
+# 管理器引用
+var pomodoro_manager: PomodoroManager
+var settings_dialog: PomodoroSettings
+
+# 信号
+signal pomodoro_closed()
+
+func _ready():
+	# 创建番茄钟管理器
+	pomodoro_manager = PomodoroManager.new()
+	add_child(pomodoro_manager)
+	
+	# 创建设置对话框
+	settings_dialog = preload(\"res://scene/pomodoro/pomodoro_settings.tscn\").instantiate()
+	add_child(settings_dialog)
+	
+	# 连接管理器信号
+	pomodoro_manager.timer_started.connect(_on_timer_started)
+	pomodoro_manager.timer_paused.connect(_on_timer_paused)
+	pomodoro_manager.timer_resumed.connect(_on_timer_resumed)
+	pomodoro_manager.timer_stopped.connect(_on_timer_stopped)
+	pomodoro_manager.session_completed.connect(_on_session_completed)
+	pomodoro_manager.time_updated.connect(_on_time_updated)
+	
+	# 连接设置对话框信号
+	settings_dialog.settings_changed.connect(_on_settings_changed)
+	settings_dialog.sessions_reset.connect(_on_sessions_reset)
+	
+	# 初始化UI
+	_update_ui()
+
+func _update_ui():
+	# 更新时间显示
+	update_time_display(pomodoro_manager.get_remaining_time())
+	
+	# 更新会话计数
+	update_session_counter(pomodoro_manager.get_completed_sessions())
+	
+	# 更新状态和主题
+	set_theme_for_session(pomodoro_manager.get_current_session())
+	
+	# 更新按钮状态
+	_update_button_states()
+
+func update_time_display(seconds: int):
+	var minutes = seconds / 60
+	var remaining_seconds = seconds % 60
+	time_label.text = \"%02d:%02d\" % [minutes, remaining_seconds]
+
+func update_progress(percentage: float):
+	progress_circle.value = percentage
+
+func update_session_counter(count: int):
+	session_counter.text = str(count)
+
+func set_theme_for_session(session_type: PomodoroData.SessionType):
+	match session_type:
+		PomodoroData.SessionType.WORK:
+			status_label.text = \"工作时间\"
+			modulate = Color.WHITE
+		PomodoroData.SessionType.SHORT_BREAK:
+			status_label.text = \"短休息\"
+			modulate = Color.LIGHT_GREEN
+		PomodoroData.SessionType.LONG_BREAK:
+			status_label.text = \"长休息\"
+			modulate = Color.LIGHT_BLUE
+
+func _update_button_states():
+	var state = pomodoro_manager.get_current_state()
+	
+	match state:
+		PomodoroData.TimerState.STOPPED:
+			start_button.text = \"开始\"
+			start_button.disabled = false
+			pause_button.disabled = true
+			stop_button.disabled = true
+		PomodoroData.TimerState.RUNNING:
+			start_button.disabled = true
+			pause_button.text = \"暂停\"
+			pause_button.disabled = false
+			stop_button.disabled = false
+		PomodoroData.TimerState.PAUSED:
+			start_button.disabled = true
+			pause_button.text = \"继续\"
+			pause_button.disabled = false
+			stop_button.disabled = false
+
+# 信号处理函数
+func _on_timer_started(session_type: PomodoroData.SessionType):
+	_update_button_states()
+
+func _on_timer_paused():
+	_update_button_states()
+
+func _on_timer_resumed():
+	_update_button_states()
+
+func _on_timer_stopped():
+	_update_ui()
+
+func _on_session_completed(session_type: PomodoroData.SessionType):
+	_update_ui()
+	# 这里可以添加通知逻辑
+
+func _on_time_updated(remaining_seconds: int):
+	update_time_display(remaining_seconds)
+	
+	# 更新进度条
+	var total_time = 0
+	match pomodoro_manager.get_current_session():
+		PomodoroData.SessionType.WORK:
+			total_time = pomodoro_manager.settings.work_duration
+		PomodoroData.SessionType.SHORT_BREAK:
+			total_time = pomodoro_manager.settings.short_break_duration
+		PomodoroData.SessionType.LONG_BREAK:
+			total_time = pomodoro_manager.settings.long_break_duration
+	
+	var progress = (total_time - remaining_seconds) * 100.0 / total_time
+	update_progress(progress)
+
+# 按钮事件处理
+func _on_start_button_pressed():
+	pomodoro_manager.start_timer()
+
+func _on_pause_button_pressed():
+	var state = pomodoro_manager.get_current_state()
+	if state == PomodoroData.TimerState.RUNNING:
+		pomodoro_manager.pause_timer()
+	elif state == PomodoroData.TimerState.PAUSED:
+		pomodoro_manager.resume_timer()
+
+func _on_stop_button_pressed():
+	pomodoro_manager.stop_timer()
+
+func _on_settings_button_pressed():
+	# 打开设置对话框
+	settings_dialog.show_settings(pomodoro_manager.settings)
+
+func _on_alarm_button_pressed():
+	# TODO: 打开闹钟设置对话框
+	print(\"闹钟按钮被点击\")
+
+func _on_close_button_pressed():
+	pomodoro_closed.emit()
+	hide()
+
+# 设置对话框信号处理
+func _on_settings_changed(new_settings: PomodoroData.SettingsData):
+	\"\"\"设置被更改时的处理\"\"\"
+	pomodoro_manager.update_settings(new_settings)
+	_update_ui()
+	
+	# 显示设置保存成功的提示
+	var success_dialog = AcceptDialog.new()
+	success_dialog.dialog_text = \"设置已保存！\"
+	success_dialog.title = \"保存成功\"
+	add_child(success_dialog)
+	success_dialog.popup_centered()
+	success_dialog.confirmed.connect(success_dialog.queue_free)
+
+func _on_sessions_reset():
+	\"\"\"会话计数被重置时的处理\"\"\"
+	pomodoro_manager.reset_session_count()
+	_update_ui()
+	
+	# 显示重置成功的提示
+	var reset_dialog = AcceptDialog.new()
+	reset_dialog.dialog_text = \"会话计数已重置！\"
+	reset_dialog.title = \"重置成功\"
+	add_child(reset_dialog)
+	reset_dialog.popup_centered()
+	reset_dialog.confirmed.connect(reset_dialog.queue_free)
+"
+
+[node name="PomodoroTimer" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = SubResource("GDScript_d0ss3")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.1, 0.1, 0.1, 0.8)
+
+[node name="MainContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -200.0
+offset_right = 150.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Title" type="Label" parent="MainContainer"]
+layout_mode = 2
+text = "番茄钟"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ProgressContainer" type="CenterContainer" parent="MainContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ProgressCircle" type="ProgressBar" parent="MainContainer/ProgressContainer"]
+custom_minimum_size = Vector2(200, 50)
+layout_mode = 2
+
+[node name="TimeLabel" type="Label" parent="MainContainer/ProgressContainer"]
+layout_mode = 2
+text = "25:00"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="MainContainer"]
+layout_mode = 2
+text = "工作时间"
+horizontal_alignment = 1
+
+[node name="ButtonContainer" type="HBoxContainer" parent="MainContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="StartButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+text = "开始"
+
+[node name="PauseButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+text = "暂停"
+
+[node name="StopButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+text = "停止"
+
+[node name="SessionInfo" type="HBoxContainer" parent="MainContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="SessionLabel" type="Label" parent="MainContainer/SessionInfo"]
+layout_mode = 2
+text = "完成会话: "
+
+[node name="SessionCounter" type="Label" parent="MainContainer/SessionInfo"]
+layout_mode = 2
+text = "0"
+
+[node name="BottomButtons" type="HBoxContainer" parent="MainContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="SettingsButton" type="Button" parent="MainContainer/BottomButtons"]
+layout_mode = 2
+text = "设置"
+
+[node name="AlarmButton" type="Button" parent="MainContainer/BottomButtons"]
+layout_mode = 2
+text = "闹钟"
+
+[node name="CloseButton" type="Button" parent="MainContainer/BottomButtons"]
+layout_mode = 2
+text = "关闭"
+
+[connection signal="pressed" from="MainContainer/ButtonContainer/StartButton" to="." method="_on_start_button_pressed"]
+[connection signal="pressed" from="MainContainer/ButtonContainer/PauseButton" to="." method="_on_pause_button_pressed"]
+[connection signal="pressed" from="MainContainer/ButtonContainer/StopButton" to="." method="_on_stop_button_pressed"]
+[connection signal="pressed" from="MainContainer/BottomButtons/SettingsButton" to="." method="_on_settings_button_pressed"]
+[connection signal="pressed" from="MainContainer/BottomButtons/AlarmButton" to="." method="_on_alarm_button_pressed"]
+[connection signal="pressed" from="MainContainer/BottomButtons/CloseButton" to="." method="_on_close_button_pressed"]

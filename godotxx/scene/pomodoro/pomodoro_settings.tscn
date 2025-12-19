@@ -1,0 +1,288 @@
+[gd_scene load_steps=2 format=3 uid="uid://bhpait5byj3uq"]
+
+[sub_resource type="GDScript" id="GDScript_aaiuf"]
+script/source = "class_name PomodoroSettings
+extends AcceptDialog
+
+# UI组件引用
+@onready var work_time_spinbox: SpinBox = $VBoxContainer/WorkTimeContainer/WorkTimeSpinBox
+@onready var short_break_spinbox: SpinBox = $VBoxContainer/ShortBreakContainer/ShortBreakSpinBox
+@onready var long_break_spinbox: SpinBox = $VBoxContainer/LongBreakContainer/LongBreakSpinBox
+@onready var sessions_spinbox: SpinBox = $VBoxContainer/SessionsContainer/SessionsSpinBox
+@onready var sound_checkbox: CheckBox = $VBoxContainer/SoundContainer/SoundCheckBox
+@onready var notification_checkbox: CheckBox = $VBoxContainer/NotificationContainer/NotificationCheckBox
+
+# 信号
+signal settings_changed(new_settings: PomodoroData.SettingsData)
+signal sessions_reset()
+
+# 当前设置数据
+var current_settings: PomodoroData.SettingsData
+
+func _ready():
+	# 连接确认按钮信号
+	confirmed.connect(_on_confirmed)
+	
+	# 连接输入验证信号
+	work_time_spinbox.value_changed.connect(_on_work_time_changed)
+	short_break_spinbox.value_changed.connect(_on_short_break_changed)
+	long_break_spinbox.value_changed.connect(_on_long_break_changed)
+	sessions_spinbox.value_changed.connect(_on_sessions_changed)
+
+func show_settings(settings: PomodoroData.SettingsData):
+	\"\"\"显示设置对话框并加载当前设置\"\"\"
+	current_settings = settings
+	_load_settings_to_ui()
+	popup_centered()
+
+func _load_settings_to_ui():
+	\"\"\"将设置数据加载到UI控件\"\"\"
+	if current_settings == null:
+		return
+	
+	work_time_spinbox.value = current_settings.work_duration / 60.0
+	short_break_spinbox.value = current_settings.short_break_duration / 60.0
+	long_break_spinbox.value = current_settings.long_break_duration / 60.0
+	sessions_spinbox.value = current_settings.sessions_until_long_break
+	sound_checkbox.button_pressed = current_settings.sound_enabled
+	notification_checkbox.button_pressed = current_settings.notification_enabled
+
+func _save_settings_from_ui() -> PomodoroData.SettingsData:
+	\"\"\"从UI控件保存设置数据\"\"\"
+	var new_settings = PomodoroData.SettingsData.new()
+	
+	# 复制原有数据
+	if current_settings != null:
+		new_settings.completed_sessions = current_settings.completed_sessions
+		new_settings.last_session_date = current_settings.last_session_date
+		new_settings.alarms = current_settings.alarms.duplicate()
+	
+	# 更新新的设置
+	new_settings.work_duration = int(work_time_spinbox.value * 60)
+	new_settings.short_break_duration = int(short_break_spinbox.value * 60)
+	new_settings.long_break_duration = int(long_break_spinbox.value * 60)
+	new_settings.sessions_until_long_break = int(sessions_spinbox.value)
+	new_settings.sound_enabled = sound_checkbox.button_pressed
+	new_settings.notification_enabled = notification_checkbox.button_pressed
+	
+	return new_settings
+
+func _validate_settings() -> bool:
+	\"\"\"验证设置的有效性\"\"\"
+	var work_minutes = work_time_spinbox.value
+	var short_break_minutes = short_break_spinbox.value
+	var long_break_minutes = long_break_spinbox.value
+	var sessions_count = sessions_spinbox.value
+	
+	# 验证时间范围
+	if work_minutes < 5 or work_minutes > 60:
+		_show_error(\"工作时间必须在5-60分钟之间\")
+		return false
+	
+	if short_break_minutes < 1 or short_break_minutes > 15:
+		_show_error(\"短休息时间必须在1-15分钟之间\")
+		return false
+	
+	if long_break_minutes < 10 or long_break_minutes > 30:
+		_show_error(\"长休息时间必须在10-30分钟之间\")
+		return false
+	
+	if sessions_count < 2 or sessions_count > 8:
+		_show_error(\"长休息间隔必须在2-8个会话之间\")
+		return false
+	
+	# 验证逻辑关系
+	if short_break_minutes >= work_minutes:
+		_show_error(\"短休息时间不能大于或等于工作时间\")
+		return false
+	
+	if long_break_minutes <= short_break_minutes:
+		_show_error(\"长休息时间必须大于短休息时间\")
+		return false
+	
+	return true
+
+func _show_error(message: String):
+	\"\"\"显示错误消息\"\"\"
+	var error_dialog = AcceptDialog.new()
+	error_dialog.dialog_text = message
+	error_dialog.title = \"设置错误\"
+	add_child(error_dialog)
+	error_dialog.popup_centered()
+	error_dialog.confirmed.connect(error_dialog.queue_free)
+
+# 信号处理函数
+func _on_confirmed():
+	\"\"\"确认按钮被点击\"\"\"
+	if _validate_settings():
+		var new_settings = _save_settings_from_ui()
+		settings_changed.emit(new_settings)
+
+func _on_reset_button_pressed():
+	\"\"\"重置为默认设置\"\"\"
+	var default_settings = PomodoroData.SettingsData.new()
+	current_settings = default_settings
+	_load_settings_to_ui()
+
+func _on_reset_sessions_button_pressed():
+	\"\"\"重置会话计数\"\"\"
+	sessions_reset.emit()
+
+# 输入验证函数
+func _on_work_time_changed(value: float):
+	\"\"\"工作时间改变时的验证\"\"\"
+	if value < 5:
+		work_time_spinbox.value = 5
+	elif value > 60:
+		work_time_spinbox.value = 60
+
+func _on_short_break_changed(value: float):
+	\"\"\"短休息时间改变时的验证\"\"\"
+	if value < 1:
+		short_break_spinbox.value = 1
+	elif value > 15:
+		short_break_spinbox.value = 15
+
+func _on_long_break_changed(value: float):
+	\"\"\"长休息时间改变时的验证\"\"\"
+	if value < 10:
+		long_break_spinbox.value = 10
+	elif value > 30:
+		long_break_spinbox.value = 30
+
+func _on_sessions_changed(value: float):
+	\"\"\"会话数改变时的验证\"\"\"
+	if value < 2:
+		sessions_spinbox.value = 2
+	elif value > 8:
+		sessions_spinbox.value = 8"
+
+[node name="PomodoroSettings" type="AcceptDialog"]
+title = "番茄钟设置"
+initial_position = 1
+size = Vector2i(400, 350)
+script = SubResource("GDScript_aaiuf")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -50.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="WorkTimeContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="WorkTimeLabel" type="Label" parent="VBoxContainer/WorkTimeContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "工作时间 (分钟):"
+
+[node name="WorkTimeSpinBox" type="SpinBox" parent="VBoxContainer/WorkTimeContainer"]
+layout_mode = 2
+min_value = 5.0
+max_value = 60.0
+value = 25.0
+
+[node name="HSeparator1" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="ShortBreakContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="ShortBreakLabel" type="Label" parent="VBoxContainer/ShortBreakContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "短休息时间 (分钟):"
+
+[node name="ShortBreakSpinBox" type="SpinBox" parent="VBoxContainer/ShortBreakContainer"]
+layout_mode = 2
+min_value = 1.0
+max_value = 15.0
+value = 5.0
+
+[node name="HSeparator2" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="LongBreakContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="LongBreakLabel" type="Label" parent="VBoxContainer/LongBreakContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "长休息时间 (分钟):"
+
+[node name="LongBreakSpinBox" type="SpinBox" parent="VBoxContainer/LongBreakContainer"]
+layout_mode = 2
+min_value = 10.0
+max_value = 30.0
+value = 15.0
+
+[node name="HSeparator3" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="SessionsContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="SessionsLabel" type="Label" parent="VBoxContainer/SessionsContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "长休息间隔 (会话数):"
+
+[node name="SessionsSpinBox" type="SpinBox" parent="VBoxContainer/SessionsContainer"]
+layout_mode = 2
+min_value = 2.0
+max_value = 8.0
+value = 4.0
+
+[node name="HSeparator4" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="SoundContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="SoundLabel" type="Label" parent="VBoxContainer/SoundContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "启用声音:"
+
+[node name="SoundCheckBox" type="CheckBox" parent="VBoxContainer/SoundContainer"]
+layout_mode = 2
+button_pressed = true
+
+[node name="HSeparator5" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="NotificationContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="NotificationLabel" type="Label" parent="VBoxContainer/NotificationContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "启用通知:"
+
+[node name="NotificationCheckBox" type="CheckBox" parent="VBoxContainer/NotificationContainer"]
+layout_mode = 2
+button_pressed = true
+
+[node name="HSeparator6" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="ButtonContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="ResetButton" type="Button" parent="VBoxContainer/ButtonContainer"]
+layout_mode = 2
+text = "重置默认"
+
+[node name="ResetSessionsButton" type="Button" parent="VBoxContainer/ButtonContainer"]
+layout_mode = 2
+text = "重置计数"
+
+[connection signal="pressed" from="VBoxContainer/ButtonContainer/ResetButton" to="." method="_on_reset_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/ButtonContainer/ResetSessionsButton" to="." method="_on_reset_sessions_button_pressed"]

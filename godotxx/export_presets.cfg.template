@@ -1,3 +1,6 @@
+# Godot 导出预设模板
+# 复制此文件为 export_presets.cfg 并根据需要修改
+
 [preset.0]
 
 name="Windows Desktop"
@@ -9,7 +12,7 @@ custom_features=""
 export_filter="all_resources"
 include_filter=""
 exclude_filter=""
-export_path="E:/学习/项目/桌宠/XX.2.exe"
+export_path="./build/XX.exe"  # 修改为你的导出路径
 patches=PackedStringArray()
 encryption_include_filters=""
 encryption_exclude_filters=""

@@ -21,8 +21,8 @@ XxClient="*res://xx_client.gd"
 
 [display]
 
-window/size/viewport_width=600
-window/size/viewport_height=900
+window/size/viewport_width=400
+window/size/viewport_height=410
 window/size/borderless=true
 window/size/always_on_top=true
 window/size/transparent=true

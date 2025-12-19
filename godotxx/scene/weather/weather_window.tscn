@@ -1,0 +1,100 @@
+[gd_scene load_steps=2 format=3 uid="uid://c7eaf2k8n4q1w"]
+
+[ext_resource type="Script" uid="uid://ww1yqorm4vtx" path="res://scene/weather/simple_weather_ui.gd" id="1_weather"]
+
+[node name="WeatherWindow" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_weather")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.15, 0.2, 0.3, 0.95)
+
+[node name="MainContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TitleBar" type="Panel" parent="MainContainer"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+
+[node name="TitleContainer" type="HBoxContainer" parent="MainContainer/TitleBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_right = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Title" type="Label" parent="MainContainer/TitleBar/TitleContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "天气预报"
+vertical_alignment = 1
+
+[node name="CloseButton" type="Button" parent="MainContainer/TitleBar/TitleContainer"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+text = "×"
+
+[node name="SearchContainer" type="HBoxContainer" parent="MainContainer"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+
+[node name="SearchInput" type="LineEdit" parent="MainContainer/SearchContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "输入城市名称..."
+
+[node name="SearchButton" type="Button" parent="MainContainer/SearchContainer"]
+layout_mode = 2
+text = "搜索"
+
+[node name="WeatherInfo" type="Label" parent="MainContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+text = "天气信息将显示在这里"
+vertical_alignment = 1
+
+[node name="FavoritesList" type="ItemList" parent="MainContainer"]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ButtonContainer" type="HBoxContainer" parent="MainContainer"]
+layout_mode = 2
+
+[node name="AddFavoriteButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "添加收藏"
+
+[node name="RemoveFavoriteButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "删除收藏"
+
+[node name="SettingsButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "数据源设置"

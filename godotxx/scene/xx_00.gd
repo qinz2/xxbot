@@ -54,9 +54,10 @@ func _ready() -> void:
 func _init_context_menu() -> void:
 	add_child(context_menu)
 	context_menu.add_item("进入聊天", 0)
-	context_menu.add_item("天气预报", 1)  # 预留功能,之后再加
+	context_menu.add_item("番茄钟", 1)
+	context_menu.add_item("天气预报", 2)
 	context_menu.add_separator()
-	context_menu.add_item("关闭", 2)
+	context_menu.add_item("关闭", 3)
 	context_menu.id_pressed.connect(_on_context_menu_id_pressed)
 
 
@@ -65,9 +66,13 @@ func _on_context_menu_id_pressed(id: int) -> void:
 	match id:
 		0:  # 进入聊天
 			open_chat_window.emit()  # 发射信号
-		1:  # 天气预报（预留）之后再加
-			print("天气预报功能待实现")
-		2:  # 关闭
+		1:  # 番茄钟
+			if mainwindow.has_method("show_pomodoro_timer"):
+				mainwindow.show_pomodoro_timer()
+		2:  # 天气预报
+			if mainwindow.has_method("show_weather_window"):
+				mainwindow.show_weather_window()
+		3:  # 关闭
 			if mainwindow.has_method("clear_chat_history"):
 				mainwindow.clear_chat_history() 
 			get_tree().quit()
@@ -150,6 +155,7 @@ func _handle_single_click() -> void:
 
 # 切换到聊天模式
 func _switch_to_chat_animation() -> void:
+	mainwindow.switch_to_quick_chat_size()
 	state = State.CHATTING
 	animation_player.play("chat")
 	chatmode.emit()
