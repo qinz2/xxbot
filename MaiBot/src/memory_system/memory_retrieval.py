@@ -988,7 +988,7 @@ async def _process_single_question(
         
         if cached_found_answer:  # found_answer == 1 (True)
             # found_answer == 1：20%概率重新查询
-            if random.random() < 0.5:
+            if random.random() < 0.2:
                 should_requery = True
                 logger.info(f"found_answer=1，触发20%概率重新查询，问题: {question[:50]}...")
             

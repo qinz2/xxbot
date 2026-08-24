@@ -202,12 +202,12 @@ class EmbeddingStore:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
-                            embedding = loop.run_until_complete(llm.get_embedding(s))
+                            embedding_vec, _ = loop.run_until_complete(llm.get_embedding(s))
                         finally:
                             loop.close()
 
-                        if embedding and len(embedding) > 0:
-                            chunk_results.append((start_idx + i, s, embedding[0]))  # embedding[0] 是实际的向量
+                        if embedding_vec and len(embedding_vec) > 0:
+                            chunk_results.append((start_idx + i, s, embedding_vec))
                         else:
                             logger.error(f"获取嵌入失败: {s}")
                             chunk_results.append((start_idx + i, s, []))
@@ -431,14 +431,16 @@ class EmbeddingStore:
         data_frame.to_parquet(self.embedding_file_path, engine="pyarrow", index=False)
         logger.info(f"{self.namespace}嵌入库保存成功")
 
-        if self.faiss_index is not None and self.idx2hash is not None:
-            logger.info(f"正在保存{self.namespace}嵌入库的FaissIndex到文件{self.index_file_path}")
-            faiss.write_index(self.faiss_index, self.index_file_path)
-            logger.info(f"{self.namespace}嵌入库的FaissIndex保存成功")
-            logger.info(f"正在保存{self.namespace}嵌入库的idx2hash映射到文件{self.idx2hash_file_path}")
-            with open(self.idx2hash_file_path, "w", encoding="utf-8") as f:
-                f.write(json.dumps(self.idx2hash, ensure_ascii=False, indent=4))
-            logger.info(f"{self.namespace}嵌入库的idx2hash映射保存成功")
+        if self.faiss_index is None or self.idx2hash is None:
+            logger.warning(f"{self.namespace} Faiss索引为空，保存前自动重建")
+            self.build_faiss_index()
+        logger.info(f"正在保存{self.namespace}嵌入库的FaissIndex到文件{self.index_file_path}")
+        faiss.write_index(self.faiss_index, self.index_file_path)
+        logger.info(f"{self.namespace}嵌入库的FaissIndex保存成功")
+        logger.info(f"正在保存{self.namespace}嵌入库的idx2hash映射到文件{self.idx2hash_file_path}")
+        with open(self.idx2hash_file_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(self.idx2hash, ensure_ascii=False, indent=4))
+        logger.info(f"{self.namespace}嵌入库的idx2hash映射保存成功")
 
     def load_from_file(self) -> None:
         """从文件中加载"""
@@ -594,8 +596,8 @@ class EmbeddingManager:
         self.paragraphs_embedding_store.load_from_file()
         self.entities_embedding_store.load_from_file()
         self.relation_embedding_store.load_from_file()
-        # 从段落库中获取已存储的hash
-        self.stored_pg_hashes = set(self.paragraphs_embedding_store.store.keys())
+        # stored_pg_hashes 始终以调用方传入的原始段落 key 为准，
+        # 不在加载时覆盖为内部 hash，避免增量去重失效。
 
     def store_new_data_set(
         self,
@@ -608,6 +610,8 @@ class EmbeddingManager:
         self._store_pg_into_embedding(raw_paragraphs)
         self._store_ent_into_embedding(triple_list_data)
         self._store_rel_into_embedding(triple_list_data)
+        # 新增数据后重建 Faiss 索引，保证内存索引与 store 一致、可被检索
+        self.rebuild_faiss_index()
         self.stored_pg_hashes.update(raw_paragraphs.keys())
 
     def save_to_file(self):
